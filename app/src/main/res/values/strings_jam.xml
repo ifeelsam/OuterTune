@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="jam_session">Jam Session</string>
+    <string name="start_jam">Start a Jam</string>
+    <string name="join_jam_title">Join a Jam</string>
+    <string name="join_jam_desc">Enter code to join</string>
+    <string name="jam_code_prompt">Enter Code</string>
+    <string name="join">Join</string>
+    <string name="jam_nickname_prompt">Your Name</string>
+    <string name="jam_host_title">You are the Host</string>
+    <string name="jam_guest_title">Jam Session</string>
+    <string name="leave_jam">Leave Jam</string>
+    <string name="jam_code_label">Code: %s</string>
+    <string name="jam_participants">Participants</string>
+    <string name="jam_experimental_desc">Custom Spotify Jam-like WebSocket server URL</string>
+</resources>

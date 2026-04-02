@@ -174,6 +174,9 @@ class MusicService : MediaLibraryService(),
 
     @Inject
     lateinit var mediaLibrarySessionCallback: MediaLibrarySessionCallback
+    
+    @Inject
+    lateinit var jamManager: JamManager
 
     private val binder = MusicBinder()
     private lateinit var connectivityManager: ConnectivityManager
@@ -282,8 +285,28 @@ class MusicService : MediaLibraryService(),
 
         connectivityManager = getSystemService()!!
 
-        currentSong.collect(scope) {
+        currentSong.collect(scope) {song ->
             updateNotification()
+            
+            // Broadcast playback state if we are the Jam host
+            if (jamManager.isHost.value && jamManager.isInSession && song != null) {
+                jamManager.sendPlaybackUpdate(
+                    songId = song.song.id,
+                    title = song.song.title,
+                    artists = song.artists.joinToString { it.name },
+                    thumbnailUrl = song.song.thumbnailUrl,
+                    duration = song.song.duration,
+                    position = player.currentPosition,
+                    isPlaying = player.isPlaying
+                )
+            }
+        }
+        
+        // Listen to remote Jam playback state if we are a guest
+        jamManager.remotePlaybackState.collect(scope) { state ->
+            if (state != null && !jamManager.isHost.value && jamManager.isInSession) {
+                syncToJamState(state)
+            }
         }
 
         setMediaNotificationProvider(
@@ -370,6 +393,62 @@ class MusicService : MediaLibraryService(),
 
 
 // Library functions
+
+    private var isSyncingToJam = false
+
+    private fun syncToJamState(state: JamPlaybackState) {
+        if (isSyncingToJam) return
+        isSyncingToJam = true
+        
+        try {
+            val currentMediaId = player.currentMediaItem?.mediaId
+            if (currentMediaId != state.songId) {
+                // We need to play a different song
+                Log.d(TAG, "Jam sync: loading new song ${state.songId}")
+                // Add to queue and play
+                val metadata = MediaMetadata(
+                    id = state.songId,
+                    title = state.title,
+                    artists = listOf(MediaMetadata.Artist(null, state.artists)),
+                    duration = state.duration,
+                    thumbnailUrl = state.thumbnailUrl,
+                    genre = null
+                )
+                
+                // create a temporary queue with just this song for now
+                // (queue sync will be handled separately)
+                playQueue(
+                    queue = ListQueue(
+                        title = "Jam Session",
+                        items = listOf(metadata)
+                    ),
+                    playWhenReady = state.isPlaying
+                )
+                
+                // Estimate exact position taking latency into account
+                val latencyMs = System.currentTimeMillis() - state.timestamp
+                val estimatedPosition = if (state.isPlaying) state.position + latencyMs else state.position
+                player.seekTo(estimatedPosition)
+                
+            } else {
+                // Same song, just check position and play state
+                val driftMs = Math.abs(player.currentPosition - state.position)
+                
+                // If drift is more than 3 seconds, seek to sync
+                if (driftMs > 3000) {
+                    val latencyMs = System.currentTimeMillis() - state.timestamp
+                    val estimatedPosition = if (state.isPlaying) state.position + latencyMs else state.position
+                    player.seekTo(estimatedPosition)
+                }
+                
+                if (player.isPlaying != state.isPlaying) {
+                    if (state.isPlaying) player.play() else player.pause()
+                }
+            }
+        } finally {
+            isSyncingToJam = false
+        }
+    }
 
     private suspend fun recoverSong(mediaId: String, playbackData: YTPlayerUtils.PlaybackData? = null) {
         val song = database.song(mediaId).first()
@@ -939,6 +1018,23 @@ class MusicService : MediaLibraryService(),
             val q = queueBoard.value.getCurrentQueue()
             q?.lastSongPos = pos
         }
+        
+        // Broadcast playback state if we are the Jam host
+        if (!isSyncingToJam && jamManager.isHost.value && jamManager.isInSession) {
+            val song = currentSong.value
+            if (song != null) {
+                jamManager.sendPlaybackUpdate(
+                    songId = song.song.id,
+                    title = song.song.title,
+                    artists = song.artists.joinToString { it.name },
+                    thumbnailUrl = song.song.thumbnailUrl,
+                    duration = song.song.duration,
+                    position = player.currentPosition,
+                    isPlaying = isPlaying
+                )
+            }
+        }
+        
         super.onIsPlayingChanged(isPlaying)
     }
 
@@ -1017,6 +1113,22 @@ class MusicService : MediaLibraryService(),
         }
         if (events.containsAny(EVENT_TIMELINE_CHANGED, EVENT_POSITION_DISCONTINUITY)) {
             currentMediaMetadata.value = player.currentMetadata
+            
+            // Broadcast playback state if we are the Jam host and position changed significantly
+            if (!isSyncingToJam && jamManager.isHost.value && jamManager.isInSession && events.contains(EVENT_POSITION_DISCONTINUITY)) {
+                val song = currentSong.value
+                if (song != null) {
+                    jamManager.sendPlaybackUpdate(
+                        songId = song.song.id,
+                        title = song.song.title,
+                        artists = song.artists.joinToString { it.name },
+                        thumbnailUrl = song.song.thumbnailUrl,
+                        duration = song.song.duration,
+                        position = player.currentPosition,
+                        isPlaying = player.isPlaying
+                    )
+                }
+            }
         }
     }
 

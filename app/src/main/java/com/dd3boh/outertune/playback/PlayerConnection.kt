@@ -78,6 +78,12 @@ class PlayerConnection(
     var queuePlaylistId = MutableStateFlow<String?>(null)
     val currentWindowIndex = MutableStateFlow(-1)
 
+    // Jam Session State
+    val isJamHost = binder.service.jamManager.isHost
+    val isInJamSession = binder.service.jamManager.jamState.map { it == JamState.IN_SESSION }
+        .stateIn(scope, SharingStarted.Lazily, false)
+    val jamParticipants = binder.service.jamManager.participants
+
     val shuffleModeEnabled = MutableStateFlow(false)
     val repeatMode = MutableStateFlow(REPEAT_MODE_OFF)
 

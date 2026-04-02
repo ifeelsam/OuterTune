@@ -68,4 +68,10 @@ object AppModule {
         constructor().release()
         return constructor()
     }
+
+    @Singleton
+    @Provides
+    fun provideJamManager(@ApplicationContext context: Context): com.dd3boh.outertune.playback.JamManager {
+        return com.dd3boh.outertune.playback.JamManager(context)
+    }
 }

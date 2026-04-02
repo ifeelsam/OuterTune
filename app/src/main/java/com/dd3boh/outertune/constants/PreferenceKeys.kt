@@ -134,6 +134,8 @@ val LastLocalScanKey = longPreferencesKey("lastLocalScan")
 val DevSettingsKey = booleanPreferencesKey("devSettings")
 val OobeStatusKey = intPreferencesKey("oobeStatus")
 val SwipeToSkipKey = booleanPreferencesKey("swipeToSkip")
+val JamServerUrlKey = stringPreferencesKey("jamServerUrl")
+val JamDisplayNameKey = stringPreferencesKey("jamDisplayName")
 
 
 /**

@@ -1,3 +1,4 @@
+import androidx.compose.material.icons.rounded.Group
 package com.dd3boh.outertune.ui.menu
 
 import android.content.Intent
@@ -417,7 +418,7 @@ fun PlayerMenu(
             bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
         )
     ) {
-        if (!mediaMetadata.isLocal)
+        if (!mediaMetadata.isLocal) {
             GridMenuItem(
                 icon = Icons.Rounded.Radio,
                 title = R.string.start_radio
@@ -425,6 +426,15 @@ fun PlayerMenu(
                 playerConnection.playQueue(YouTubeQueue.radio(mediaMetadata), isRadio = true)
                 onDismiss()
             }
+            GridMenuItem(
+                icon = Icons.Rounded.Group,
+                title = R.string.jam_session
+            ) {
+                navController.navigate("jam")
+                playerBottomSheetState.collapseSoft()
+                onDismiss()
+            }
+        }
         GridMenuItem(
             icon = Icons.AutoMirrored.Rounded.QueueMusic,
             title = R.string.add_to_queue

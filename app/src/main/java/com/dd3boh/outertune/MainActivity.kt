@@ -161,6 +161,8 @@ import com.dd3boh.outertune.ui.screens.library.LibrarySongsScreen
 import com.dd3boh.outertune.ui.screens.playlist.AutoPlaylistScreen
 import com.dd3boh.outertune.ui.screens.playlist.LocalPlaylistScreen
 import com.dd3boh.outertune.ui.screens.playlist.OnlinePlaylistScreen
+import com.dd3boh.outertune.ui.screens.jam.JamScreen
+import com.dd3boh.outertune.ui.screens.jam.JoinJamScreen
 import com.dd3boh.outertune.ui.screens.search.OnlineSearchResult
 import com.dd3boh.outertune.ui.screens.search.SearchBarContainer
 import com.dd3boh.outertune.ui.screens.settings.AboutScreen
@@ -684,6 +686,23 @@ class MainActivity : ComponentActivity() {
                                         )
                                     ) {
                                         YouTubeBrowseScreen(navController, scrollBehavior)
+                                    }
+                                    composable("jam") {
+                                        JamScreen(navController = navController)
+                                    }
+                                    composable(
+                                        route = "jam/join/{code}",
+                                        arguments = listOf(
+                                            navArgument("code") {
+                                                type = NavType.StringType
+                                                nullable = true
+                                            }
+                                        )
+                                    ) {
+                                        JoinJamScreen(
+                                            navController = navController,
+                                            initialCode = it.arguments?.getString("code")
+                                        )
                                     }
                                     composable("settings") {
                                         SettingsScreen(navController, scrollBehavior)

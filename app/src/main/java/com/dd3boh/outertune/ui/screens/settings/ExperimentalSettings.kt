@@ -67,12 +67,15 @@ import com.dd3boh.outertune.R
 import com.dd3boh.outertune.constants.AudioGaplessOffloadKey
 import com.dd3boh.outertune.constants.AudioOffloadKey
 import com.dd3boh.outertune.constants.DevSettingsKey
+import com.dd3boh.outertune.constants.JamDisplayNameKey
+import com.dd3boh.outertune.constants.JamServerUrlKey
 import com.dd3boh.outertune.constants.MaxQueuesKey
 import com.dd3boh.outertune.constants.OobeStatusKey
 import com.dd3boh.outertune.constants.TabletUiKey
 import com.dd3boh.outertune.constants.TopBarInsets
 import com.dd3boh.outertune.constants.VisitorDataKey
 import com.dd3boh.outertune.ui.component.ColumnWithContentPadding
+import com.dd3boh.outertune.ui.component.EditTextPreference
 import com.dd3boh.outertune.ui.component.PreferenceEntry
 import com.dd3boh.outertune.ui.component.PreferenceGroupTitle
 import com.dd3boh.outertune.ui.component.SwitchPreference
@@ -110,6 +113,9 @@ fun ExperimentalSettings(
 
     val (devSettings, onDevSettingsChange) = rememberPreference(DevSettingsKey, defaultValue = false)
     val (oobeStatus, onOobeStatusChange) = rememberPreference(OobeStatusKey, defaultValue = 0)
+
+    val (jamServerUrl, onJamServerUrlChange) = rememberPreference(JamServerUrlKey, defaultValue = "ws://10.0.2.2:3000")
+    val (jamDisplayName, onJamDisplayNameChange) = rememberPreference(JamDisplayNameKey, defaultValue = "Guest")
 
     var nukeEnabled by remember {
         mutableStateOf(false)
@@ -233,6 +239,21 @@ fun ExperimentalSettings(
                     }
                     navController.navigate("setup_wizard")
                 }
+            )
+
+            Spacer(Modifier.height(20.dp))
+            PreferenceGroupTitle(title = "Spotify Jam")
+            EditTextPreference(
+                title = { Text("Jam Server URL") },
+                icon = { Icon(Icons.Rounded.Queue, null) },
+                value = jamServerUrl,
+                onValueChange = onJamServerUrlChange
+            )
+            EditTextPreference(
+                title = { Text("Default Display Name") },
+                icon = { Icon(Icons.Rounded.ConfirmationNumber, null) },
+                value = jamDisplayName,
+                onValueChange = onJamDisplayNameChange
             )
 
 
