@@ -22,6 +22,7 @@ interface JamSession {
   playbackState: PlaybackState | null;
   queue: QueueItem[];
   createdAt: number;
+  guestControlEnabled: boolean;
 }
 
 interface PlaybackState {
@@ -157,6 +158,7 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string) {
         playbackState: null,
         queue: [],
         createdAt: Date.now(),
+        guestControlEnabled: false,
       };
 
       sessions.set(sessionId, session);
@@ -214,6 +216,7 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string) {
         participants: getParticipantList(session),
         playbackState: session.playbackState,
         queue: session.queue,
+        guestControlEnabled: session.guestControlEnabled,
       }));
 
       // Notify others
@@ -240,6 +243,28 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string) {
       break;
     }
 
+    case "UPDATE_SETTINGS": {
+      const sessionId = ws.data.sessionId;
+      if (!sessionId) return;
+
+      const session = sessions.get(sessionId);
+      if (!session) return;
+
+      if (session.host.id !== participantId) {
+        ws.send(JSON.stringify({ type: "ERROR", message: "Only the host can update settings" }));
+        return;
+      }
+
+      if (typeof msg.guestControlEnabled === "boolean") {
+        session.guestControlEnabled = msg.guestControlEnabled;
+        broadcast(session, {
+          type: "SETTINGS_UPDATED",
+          guestControlEnabled: session.guestControlEnabled,
+        });
+      }
+      break;
+    }
+
     case "PLAYBACK": {
       const sessionId = ws.data.sessionId;
       if (!sessionId) return;
@@ -247,8 +272,8 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string) {
       const session = sessions.get(sessionId);
       if (!session) return;
 
-      // Only host can update playback state
-      if (session.host.id !== participantId) {
+      // Host or guest if guest control is enabled
+      if (session.host.id !== participantId && !session.guestControlEnabled) {
         ws.send(JSON.stringify({ type: "ERROR", message: "Only the host can control playback" }));
         return;
       }
@@ -313,8 +338,7 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string) {
       const session = sessions.get(sessionId);
       if (!session) return;
 
-      // Only host can remove from queue
-      if (session.host.id !== participantId) {
+      if (session.host.id !== participantId && !session.guestControlEnabled) {
         ws.send(JSON.stringify({ type: "ERROR", message: "Only the host can remove queue items" }));
         return;
       }
@@ -339,7 +363,7 @@ function handleMessage(ws: ServerWebSocket<WsData>, raw: string) {
       const session = sessions.get(sessionId);
       if (!session) return;
 
-      if (session.host.id !== participantId) {
+      if (session.host.id !== participantId && !session.guestControlEnabled) {
         ws.send(JSON.stringify({ type: "ERROR", message: "Only the host can reorder the queue" }));
         return;
       }

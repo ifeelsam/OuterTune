@@ -35,6 +35,7 @@ fun JamScreen(
     val joinCode by viewModel.jamManager.joinCode.collectAsState()
     val participants by viewModel.jamManager.participants.collectAsState()
     val error by viewModel.jamManager.error.collectAsState()
+    val guestControlEnabled by viewModel.guestControlEnabled.collectAsState()
     
     val clipboardManager = LocalClipboardManager.current
     
@@ -77,7 +78,9 @@ fun JamScreen(
                     isHost = isHost,
                     joinCode = joinCode,
                     participants = participants,
-                    onCopyCode = { code -> clipboardManager.setText(AnnotatedString(code)) }
+                    guestControlEnabled = guestControlEnabled,
+                    onCopyCode = { code -> clipboardManager.setText(AnnotatedString(code)) },
+                    onToggleGuestControl = viewModel::toggleGuestControl
                 )
             }
         }
@@ -183,7 +186,9 @@ private fun JamSessionView(
     isHost: Boolean,
     joinCode: String?,
     participants: List<com.dd3boh.outertune.playback.JamParticipant>,
-    onCopyCode: (String) -> Unit
+    guestControlEnabled: Boolean,
+    onCopyCode: (String) -> Unit,
+    onToggleGuestControl: () -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxSize()
@@ -225,6 +230,50 @@ private fun JamSessionView(
                 )
             }
         }
+
+        // Guest control toggle / indicator
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Group,
+                    contentDescription = null,
+                    tint = if (guestControlEnabled) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Guest Control",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        if (guestControlEnabled) "Guests can change songs & seek"
+                        else "Only the host can control playback",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (isHost) {
+                    Switch(
+                        checked = guestControlEnabled,
+                        onCheckedChange = { onToggleGuestControl() }
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
 
         Text(
             "Participants (${participants.size})",

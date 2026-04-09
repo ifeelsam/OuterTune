@@ -288,8 +288,9 @@ class MusicService : MediaLibraryService(),
         currentSong.collect(scope) {song ->
             updateNotification()
             
-            // Broadcast playback state if we are the Jam host
-            if (jamManager.isHost.value && jamManager.isInSession && song != null) {
+            // Broadcast playback state if we are the Jam host or guest control is on
+            if (!isSyncingToJam && jamManager.isInSession && song != null
+                && (jamManager.isHost.value || jamManager.guestControlEnabled.value)) {
                 jamManager.sendPlaybackUpdate(
                     songId = song.song.id,
                     title = song.song.title,
@@ -302,10 +303,13 @@ class MusicService : MediaLibraryService(),
             }
         }
         
-        // Listen to remote Jam playback state if we are a guest
+        // Listen to remote Jam playback state if we are a guest or guest-control is active
         jamManager.remotePlaybackState.collect(scope) { state ->
-            if (state != null && !jamManager.isHost.value && jamManager.isInSession) {
-                syncToJamState(state)
+            if (state != null && !isSyncingToJam && jamManager.isInSession) {
+                // Sync remote state: skip if we are the broadcaster ourselves
+                if (!jamManager.isHost.value || jamManager.guestControlEnabled.value) {
+                    syncToJamState(state)
+                }
             }
         }
 
@@ -1019,8 +1023,9 @@ class MusicService : MediaLibraryService(),
             q?.lastSongPos = pos
         }
         
-        // Broadcast playback state if we are the Jam host
-        if (!isSyncingToJam && jamManager.isHost.value && jamManager.isInSession) {
+        // Broadcast playback state if host or guest control is enabled
+        if (!isSyncingToJam && jamManager.isInSession
+            && (jamManager.isHost.value || jamManager.guestControlEnabled.value)) {
             val song = currentSong.value
             if (song != null) {
                 jamManager.sendPlaybackUpdate(
@@ -1114,8 +1119,9 @@ class MusicService : MediaLibraryService(),
         if (events.containsAny(EVENT_TIMELINE_CHANGED, EVENT_POSITION_DISCONTINUITY)) {
             currentMediaMetadata.value = player.currentMetadata
             
-            // Broadcast playback state if we are the Jam host and position changed significantly
-            if (!isSyncingToJam && jamManager.isHost.value && jamManager.isInSession && events.contains(EVENT_POSITION_DISCONTINUITY)) {
+            // Broadcast seek if host or if guest control is on
+            if (!isSyncingToJam && jamManager.isInSession && events.contains(EVENT_POSITION_DISCONTINUITY)
+                && (jamManager.isHost.value || jamManager.guestControlEnabled.value)) {
                 val song = currentSong.value
                 if (song != null) {
                     jamManager.sendPlaybackUpdate(

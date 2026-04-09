@@ -42,6 +42,12 @@ class JamViewModel @Inject constructor(
         jamManager.leaveSession()
     }
 
+    fun toggleGuestControl() {
+        jamManager.toggleGuestControl()
+    }
+
+    val guestControlEnabled = jamManager.guestControlEnabled
+
     fun clearError() {
         jamManager.clearError()
     }

@@ -77,6 +77,9 @@ class JamManager @Inject constructor(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    private val _guestControlEnabled = MutableStateFlow(false)
+    val guestControlEnabled: StateFlow<Boolean> = _guestControlEnabled.asStateFlow()
+
     private var displayName: String = "User"
 
     val isInSession: Boolean
@@ -105,6 +108,19 @@ class JamManager @Inject constructor(
         disconnect()
     }
 
+    fun toggleGuestControl() {
+        if (!_isHost.value || !isInSession) return
+        val newValue = !_guestControlEnabled.value
+        sendMessage(
+            org.json.JSONObject().apply {
+                put("type", "UPDATE_SETTINGS")
+                put("guestControlEnabled", newValue)
+            }.toString()
+        )
+        // Optimistically update local state immediately
+        _guestControlEnabled.value = newValue
+    }
+
     fun sendPlaybackUpdate(
         songId: String,
         title: String,
@@ -114,7 +130,9 @@ class JamManager @Inject constructor(
         position: Long,
         isPlaying: Boolean,
     ) {
-        if (!_isHost.value || !isInSession) return
+        // Allow if host, or if guest control is enabled
+        if (!isInSession) return
+        if (!_isHost.value && !_guestControlEnabled.value) return
         sendMessage(
             JamMessages.playbackState(
                 songId = songId,
@@ -244,6 +262,7 @@ class JamManager @Inject constructor(
         _jamQueue.value = emptyList()
         _remotePlaybackState.value = null
         _error.value = null
+        _guestControlEnabled.value = false
     }
 
     private fun sendMessage(message: String) {
@@ -284,6 +303,7 @@ class JamManager @Inject constructor(
                     _isHost.value = json.optBoolean("isHost", false)
                     _participants.value = parseParticipantList(json)
                     _jamQueue.value = parseQueueList(json)
+                    _guestControlEnabled.value = json.optBoolean("guestControlEnabled", false)
                     _jamState.value = JamState.IN_SESSION
 
                     // Parse initial playback state if present
@@ -337,6 +357,11 @@ class JamManager @Inject constructor(
 
                 "PONG" -> {
                     // heartbeat response, no action needed
+                }
+
+                "SETTINGS_UPDATED" -> {
+                    _guestControlEnabled.value = json.optBoolean("guestControlEnabled", false)
+                    Log.i(TAG, "Settings updated: guestControlEnabled=${_guestControlEnabled.value}")
                 }
 
                 else -> {
