@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.akanework.gramophone.logic.utils.SemanticLyrics
@@ -79,10 +80,10 @@ class PlayerConnection(
     val currentWindowIndex = MutableStateFlow(-1)
 
     // Jam Session State
-    val isJamHost = binder.service.jamManager.isHost
-    val isInJamSession = binder.service.jamManager.jamState.map { it == JamState.IN_SESSION }
+    val isJamHost = service.jamManager.isHost
+    val isInJamSession = service.jamManager.jamState.map { it == JamState.IN_SESSION }
         .stateIn(scope, SharingStarted.Lazily, false)
-    val jamParticipants = binder.service.jamManager.participants
+    val jamParticipants = service.jamManager.participants
 
     val shuffleModeEnabled = MutableStateFlow(false)
     val repeatMode = MutableStateFlow(REPEAT_MODE_OFF)

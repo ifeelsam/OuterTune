@@ -19,6 +19,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.dd3boh.outertune.playback.JamState
 import com.dd3boh.outertune.viewmodels.JamViewModel
@@ -211,7 +212,7 @@ private fun JamSessionView(
                         style = MaterialTheme.typography.displayMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        letterSpacing = 4.dp
+                        letterSpacing = 4.sp
                     )
                     IconButton(onClick = { joinCode?.let { onCopyCode(it) } }) {
                         Icon(Icons.Rounded.ContentCopy, "Copy Code")
