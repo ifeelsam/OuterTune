@@ -8,6 +8,8 @@ var WebSocketServer = require("ws").WebSocketServer;
 var http = require("http");
 var crypto = require("crypto");
 
+var HOST_GRACE_PERIOD_MS = 15 * 1000;
+
 // ─── State ───────────────────────────────────────────────────────────────────
 
 var sessions = new Map();
@@ -31,10 +33,21 @@ function generateId() {
   return crypto.randomBytes(16).toString("hex");
 }
 
+function trim(val) {
+  return val && typeof val === "string" ? val.trim() : "";
+}
+
 function send(ws, message) {
-  if (ws.readyState === WebSocket.OPEN) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(message));
   }
+}
+
+function setSocketState(ws, participantId, sessionId) {
+  var data = wsData.get(ws);
+  if (!data) return;
+  data.participantId = participantId;
+  data.sessionId = sessionId;
 }
 
 function broadcast(session, message, excludeId) {
@@ -47,35 +60,152 @@ function broadcast(session, message, excludeId) {
 
 function getParticipantList(session) {
   var list = [];
-  session.participants.forEach(function(p) {
-    list.push({ id: p.id, displayName: p.displayName, isHost: p.isHost });
+  session.participants.forEach(function(participant) {
+    list.push({
+      id: participant.id,
+      displayName: participant.displayName,
+      isHost: participant.isHost,
+    });
   });
   return list;
 }
 
-function removeParticipant(session, participantId) {
-  var participant = session.participants.get(participantId);
+function clearParticipantResume(session, participant) {
   if (!participant) return;
-
-  session.participants.delete(participantId);
-
-  if (participant.isHost || session.participants.size === 0) {
-    var reason = participant.isHost ? "host_left" : "empty";
-    broadcast(session, { type: "SESSION_ENDED", reason: reason });
-    codeToSessionId.delete(session.code);
-    sessions.delete(session.id);
-    console.log("Session " + session.code + " ended (" + reason + ")");
-  } else {
-    broadcast(session, {
-      type: "PARTICIPANT_LEFT",
-      participantId: participantId,
-      participants: getParticipantList(session),
-    });
+  if (participant.resumeToken) {
+    session.resumeIndex.delete(participant.resumeToken);
+  }
+  if (participant.clientId) {
+    session.clientIndex.delete(participant.clientId);
   }
 }
 
-function trim(val) {
-  return val && typeof val === "string" ? val.trim() : "";
+function attachSocketToParticipant(ws, session, participant) {
+  var oldWs = participant.ws;
+  if (oldWs && oldWs !== ws) {
+    var oldData = wsData.get(oldWs);
+    if (oldData) {
+      oldData.sessionId = null;
+    }
+    try {
+      oldWs.close(4001, "Replaced by resume");
+    } catch (e) {
+      // Best effort cleanup for stale sockets.
+    }
+  }
+
+  participant.ws = ws;
+  participant.connected = true;
+  participant.disconnectedAt = null;
+
+  session.participants.set(participant.id, participant);
+  session.disconnectedParticipants.delete(participant.id);
+  session.resumeIndex.set(participant.resumeToken, participant.id);
+  session.clientIndex.set(participant.clientId, participant.id);
+
+  setSocketState(ws, participant.id, session.id);
+}
+
+function buildSessionPayload(session, participant) {
+  return {
+    type: "SESSION_JOINED",
+    sessionId: session.id,
+    code: session.code,
+    isHost: participant.isHost,
+    participants: getParticipantList(session),
+    playbackState: session.playbackState,
+    queue: session.queue,
+    guestControlEnabled: session.guestControlEnabled,
+    selfParticipantId: participant.id,
+    resumeToken: participant.resumeToken,
+  };
+}
+
+function cancelHostGraceTimeout(session) {
+  if (session.hostGraceTimeout) {
+    clearTimeout(session.hostGraceTimeout);
+    session.hostGraceTimeout = null;
+  }
+}
+
+function endSession(session, reason) {
+  cancelHostGraceTimeout(session);
+  broadcast(session, { type: "SESSION_ENDED", reason: reason });
+  codeToSessionId.delete(session.code);
+  sessions.delete(session.id);
+  console.log("Session " + session.code + " ended (" + reason + ")");
+}
+
+function scheduleHostGraceTimeout(session) {
+  if (session.hostGraceTimeout) return;
+
+  session.hostGraceTimeout = setTimeout(function() {
+    session.hostGraceTimeout = null;
+    var host = session.host;
+    if (host && !host.connected) {
+      endSession(session, "host_disconnected_timeout");
+    }
+  }, HOST_GRACE_PERIOD_MS);
+
+  console.log("Session " + session.code + ": waiting " + HOST_GRACE_PERIOD_MS + "ms for host resume");
+}
+
+function removeParticipant(session, participantId, options) {
+  options = options || {};
+
+  var participant = session.participants.get(participantId) || session.disconnectedParticipants.get(participantId);
+  if (!participant) return;
+
+  if (participant.isHost && !options.intentional) {
+    participant.connected = false;
+    participant.disconnectedAt = Date.now();
+    participant.ws = null;
+    session.participants.set(participant.id, participant);
+    scheduleHostGraceTimeout(session);
+    console.log("Host temporarily disconnected from session " + session.code);
+    return;
+  }
+
+  if (participant.isHost) {
+    endSession(session, "host_left");
+    return;
+  }
+
+  session.participants.delete(participant.id);
+  participant.connected = false;
+  participant.disconnectedAt = Date.now();
+  participant.ws = null;
+
+  if (options.allowResume) {
+    session.disconnectedParticipants.set(participant.id, participant);
+  } else {
+    clearParticipantResume(session, participant);
+    session.disconnectedParticipants.delete(participant.id);
+  }
+
+  if (session.participants.size === 0) {
+    endSession(session, "empty");
+    return;
+  }
+
+  broadcast(session, {
+    type: "PARTICIPANT_LEFT",
+    participantId: participant.id,
+    participants: getParticipantList(session),
+  });
+}
+
+function findResumableParticipant(session, clientId, resumeToken) {
+  if (!resumeToken) return null;
+
+  var participantId = session.resumeIndex.get(resumeToken);
+  if (!participantId) return null;
+
+  var participant = session.participants.get(participantId) || session.disconnectedParticipants.get(participantId);
+  if (!participant) return null;
+  if (participant.clientId !== clientId) return null;
+
+  return participant;
 }
 
 // ─── Cleanup stale sessions (every 5 minutes) ────────────────────────────────
@@ -83,12 +213,10 @@ function trim(val) {
 setInterval(function() {
   var now = Date.now();
   var maxAge = 12 * 60 * 60 * 1000;
+
   sessions.forEach(function(session, id) {
     if (now - session.createdAt > maxAge) {
-      broadcast(session, { type: "SESSION_ENDED", reason: "expired" });
-      codeToSessionId.delete(session.code);
-      sessions.delete(id);
-      console.log("Session " + session.code + " expired");
+      endSession(session, "expired");
     }
   });
 }, 5 * 60 * 1000);
@@ -106,31 +234,56 @@ function handleMessage(ws, raw) {
 
   var data = wsData.get(ws);
   if (!data) return;
-  var participantId = data.participantId;
 
   switch (msg.type) {
     case "CREATE": {
       var displayName = trim(msg.displayName) || "Host";
+      var clientId = trim(msg.clientId) || generateId();
+      var participantId = generateId();
+      var resumeToken = generateId();
       var sessionId = generateId();
       var code = generateCode();
 
-      var participant = { id: participantId, displayName: displayName, isHost: true, ws: ws };
+      var participant = {
+        id: participantId,
+        clientId: clientId,
+        resumeToken: resumeToken,
+        displayName: displayName,
+        isHost: true,
+        ws: ws,
+        connected: true,
+        disconnectedAt: null,
+      };
+
       var session = {
         id: sessionId,
         code: code,
         host: participant,
-        participants: new Map([[participantId, participant]]),
+        participants: new Map(),
+        disconnectedParticipants: new Map(),
+        resumeIndex: new Map(),
+        clientIndex: new Map(),
         playbackState: null,
         queue: [],
         createdAt: Date.now(),
         guestControlEnabled: false,
+        hostGraceTimeout: null,
       };
 
+      attachSocketToParticipant(ws, session, participant);
       sessions.set(sessionId, session);
       codeToSessionId.set(code, sessionId);
-      data.sessionId = sessionId;
 
-      send(ws, { type: "SESSION_CREATED", sessionId: sessionId, code: code, participants: getParticipantList(session) });
+      send(ws, {
+        type: "SESSION_CREATED",
+        sessionId: sessionId,
+        code: code,
+        participants: getParticipantList(session),
+        selfParticipantId: participant.id,
+        resumeToken: participant.resumeToken,
+        isHost: true,
+      });
+
       console.log("Session created: " + code + " by " + displayName);
       break;
     }
@@ -138,79 +291,130 @@ function handleMessage(ws, raw) {
     case "JOIN": {
       var code = trim(msg.code).toUpperCase();
       var displayName = trim(msg.displayName) || "Guest";
+      var clientId = trim(msg.clientId);
+      var resumeToken = trim(msg.resumeToken);
 
-      if (!code) { send(ws, { type: "ERROR", message: "Code is required" }); return; }
+      if (!code) {
+        send(ws, { type: "ERROR", message: "Code is required" });
+        return;
+      }
 
       var sessionId = codeToSessionId.get(code);
-      if (!sessionId) { send(ws, { type: "ERROR", message: "Session not found" }); return; }
+      if (!sessionId) {
+        send(ws, { type: "ERROR", message: "Session not found" });
+        return;
+      }
 
       var session = sessions.get(sessionId);
-      if (!session) { send(ws, { type: "ERROR", message: "Session not found" }); return; }
+      if (!session) {
+        send(ws, { type: "ERROR", message: "Session not found" });
+        return;
+      }
 
-      var participant = { id: participantId, displayName: displayName, isHost: false, ws: ws };
-      session.participants.set(participantId, participant);
-      data.sessionId = sessionId;
+      if (resumeToken) {
+        var resumableParticipant = findResumableParticipant(session, clientId, resumeToken);
+        if (!resumableParticipant) {
+          send(ws, { type: "ERROR", message: "Resume rejected" });
+          return;
+        }
 
-      send(ws, {
-        type: "SESSION_JOINED",
-        sessionId: sessionId,
-        code: session.code,
+        var wasDisconnected = session.disconnectedParticipants.has(resumableParticipant.id);
+        if (displayName) {
+          resumableParticipant.displayName = displayName;
+        }
+
+        attachSocketToParticipant(ws, session, resumableParticipant);
+
+        if (resumableParticipant.isHost) {
+          cancelHostGraceTimeout(session);
+          session.host = resumableParticipant;
+        }
+
+        send(ws, buildSessionPayload(session, resumableParticipant));
+
+        if (wasDisconnected) {
+          broadcast(session, {
+            type: "PARTICIPANTS_UPDATED",
+            participants: getParticipantList(session),
+          }, resumableParticipant.id);
+        }
+
+        console.log(resumableParticipant.displayName + " resumed session " + code);
+        return;
+      }
+
+      var participantId = generateId();
+      var newResumeToken = generateId();
+      var participant = {
+        id: participantId,
+        clientId: clientId || generateId(),
+        resumeToken: newResumeToken,
+        displayName: displayName,
         isHost: false,
-        participants: getParticipantList(session),
-        playbackState: session.playbackState,
-        queue: session.queue,
-        guestControlEnabled: session.guestControlEnabled,
-      });
+        ws: ws,
+        connected: true,
+        disconnectedAt: null,
+      };
+
+      attachSocketToParticipant(ws, session, participant);
+
+      send(ws, buildSessionPayload(session, participant));
 
       broadcast(session, {
         type: "PARTICIPANT_JOINED",
-        participant: { id: participantId, displayName: displayName, isHost: false },
+        participant: { id: participant.id, displayName: participant.displayName, isHost: false },
         participants: getParticipantList(session),
-      }, participantId);
+      }, participant.id);
 
       console.log(displayName + " joined session " + code);
       break;
     }
 
     case "LEAVE": {
-      if (!data.sessionId) return;
+      if (!data.sessionId || !data.participantId) return;
       var session = sessions.get(data.sessionId);
       if (!session) return;
-      removeParticipant(session, participantId);
+
+      removeParticipant(session, data.participantId, {
+        intentional: true,
+        allowResume: false,
+      });
       data.sessionId = null;
       send(ws, { type: "LEFT" });
       break;
     }
 
     case "UPDATE_SETTINGS": {
-      if (!data.sessionId) return;
+      if (!data.sessionId || !data.participantId) return;
       var session = sessions.get(data.sessionId);
       if (!session) return;
 
-      if (session.host.id !== participantId) {
+      if (session.host.id !== data.participantId) {
         send(ws, { type: "ERROR", message: "Only the host can update settings" });
         return;
       }
 
       if (typeof msg.guestControlEnabled === "boolean") {
         session.guestControlEnabled = msg.guestControlEnabled;
-        broadcast(session, { type: "SETTINGS_UPDATED", guestControlEnabled: session.guestControlEnabled });
-        console.log("Session " + session.code + ": guestControlEnabled = " + session.guestControlEnabled);
+        broadcast(session, {
+          type: "SETTINGS_UPDATED",
+          guestControlEnabled: session.guestControlEnabled,
+        });
       }
       break;
     }
 
     case "PLAYBACK": {
-      if (!data.sessionId) return;
+      if (!data.sessionId || !data.participantId) return;
       var session = sessions.get(data.sessionId);
       if (!session) return;
 
-      if (session.host.id !== participantId && !session.guestControlEnabled) {
+      if (session.host.id !== data.participantId && !session.guestControlEnabled) {
         send(ws, { type: "ERROR", message: "Only the host can control playback" });
         return;
       }
 
-      var playbackState = {
+      session.playbackState = {
         songId: msg.songId,
         title: msg.title,
         artists: msg.artists,
@@ -221,18 +425,17 @@ function handleMessage(ws, raw) {
         timestamp: Date.now(),
       };
 
-      session.playbackState = playbackState;
-      var broadcastMsg = Object.assign({ type: "PLAYBACK" }, playbackState);
-      broadcast(session, broadcastMsg, participantId);
+      var playbackMessage = Object.assign({ type: "PLAYBACK" }, session.playbackState);
+      broadcast(session, playbackMessage, data.participantId);
       break;
     }
 
     case "QUEUE_ADD": {
-      if (!data.sessionId) return;
+      if (!data.sessionId || !data.participantId) return;
       var session = sessions.get(data.sessionId);
       if (!session) return;
 
-      var participant = session.participants.get(participantId);
+      var participant = session.participants.get(data.participantId);
       if (!participant) return;
 
       var song = msg.song || {};
@@ -247,16 +450,21 @@ function handleMessage(ws, raw) {
       };
 
       session.queue.push(queueItem);
-      broadcast(session, { type: "QUEUE_UPDATED", queue: session.queue, action: "added", item: queueItem });
+      broadcast(session, {
+        type: "QUEUE_UPDATED",
+        queue: session.queue,
+        action: "added",
+        item: queueItem,
+      });
       break;
     }
 
     case "QUEUE_REMOVE": {
-      if (!data.sessionId) return;
+      if (!data.sessionId || !data.participantId) return;
       var session = sessions.get(data.sessionId);
       if (!session) return;
 
-      if (session.host.id !== participantId && !session.guestControlEnabled) {
+      if (session.host.id !== data.participantId && !session.guestControlEnabled) {
         send(ws, { type: "ERROR", message: "Only the host can remove queue items" });
         return;
       }
@@ -270,11 +478,11 @@ function handleMessage(ws, raw) {
     }
 
     case "QUEUE_REORDER": {
-      if (!data.sessionId) return;
+      if (!data.sessionId || !data.participantId) return;
       var session = sessions.get(data.sessionId);
       if (!session) return;
 
-      if (session.host.id !== participantId && !session.guestControlEnabled) {
+      if (session.host.id !== data.participantId && !session.guestControlEnabled) {
         send(ws, { type: "ERROR", message: "Only the host can reorder the queue" });
         return;
       }
@@ -302,7 +510,7 @@ function handleMessage(ws, raw) {
 
 // ─── HTTP + WebSocket Server ──────────────────────────────────────────────────
 
-var PORT = parseInt(process.env.PORT || "8080");
+var PORT = parseInt(process.env.PORT || "8080", 10);
 
 var httpServer = http.createServer(function(req, res) {
   if (req.url === "/health") {
@@ -310,6 +518,7 @@ var httpServer = http.createServer(function(req, res) {
     res.end(JSON.stringify({ status: "ok", sessions: sessions.size, uptime: process.uptime() }));
     return;
   }
+
   res.writeHead(200);
   res.end("OuterTune Jam Server");
 });
@@ -317,25 +526,41 @@ var httpServer = http.createServer(function(req, res) {
 var wss = new WebSocketServer({ server: httpServer, path: "/ws" });
 
 wss.on("connection", function(ws) {
-  var participantId = generateId();
-  wsData.set(ws, { participantId: participantId, sessionId: null });
-  console.log("Client connected: " + participantId);
+  var connectionId = generateId();
+  wsData.set(ws, {
+    connectionId: connectionId,
+    participantId: null,
+    sessionId: null,
+  });
+
+  console.log("Client connected: " + connectionId);
 
   ws.on("message", function(data) {
     handleMessage(ws, data.toString());
   });
 
-  ws.on("close", function() {
-    console.log("Client disconnected: " + participantId);
-    var data = wsData.get(ws);
-    if (data && data.sessionId) {
+  ws.on("close", function(code, reason) {
+    var data = wsData.get(ws) || {};
+    var reasonText = reason && reason.length ? reason.toString() : "";
+    var id = data.participantId || data.connectionId || connectionId;
+    console.log("Client disconnected: " + id + " (" + code + (reasonText ? ", " + reasonText : "") + ")");
+
+    if (data.sessionId && data.participantId) {
       var session = sessions.get(data.sessionId);
-      if (session) removeParticipant(session, participantId);
+      if (session) {
+        removeParticipant(session, data.participantId, {
+          intentional: false,
+          allowResume: true,
+        });
+      }
+      data.sessionId = null;
     }
   });
 
   ws.on("error", function(err) {
-    console.error("WebSocket error for " + participantId + ": " + err.message);
+    var data = wsData.get(ws) || {};
+    var id = data.participantId || data.connectionId || connectionId;
+    console.error("WebSocket error for " + id + ": " + err.message);
   });
 });
 

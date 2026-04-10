@@ -38,7 +38,7 @@ data class JamPlaybackState(
             songId = json.getString("songId"),
             title = json.getString("title"),
             artists = json.getString("artists"),
-            thumbnailUrl = json.optString("thumbnailUrl", null),
+            thumbnailUrl = if (json.isNull("thumbnailUrl")) null else json.optString("thumbnailUrl"),
             duration = json.optInt("duration", 0),
             position = json.optLong("position", 0),
             isPlaying = json.optBoolean("isPlaying", true),
@@ -72,33 +72,55 @@ data class JamQueueItem(
             songId = json.getString("songId"),
             title = json.getString("title"),
             artists = json.getString("artists"),
-            thumbnailUrl = json.optString("thumbnailUrl", null),
+            thumbnailUrl = if (json.isNull("thumbnailUrl")) null else json.optString("thumbnailUrl"),
             duration = json.optInt("duration", 0),
             addedBy = json.optString("addedBy", ""),
         )
     }
 }
 
+enum class JamEndReason {
+    HOST_ENDED,
+    HOST_DISCONNECTED_TIMEOUT,
+    SESSION_EXPIRED,
+    SESSION_NOT_FOUND,
+    RESUME_REJECTED,
+    CONNECTION_FAILED,
+    UNKNOWN,
+}
+
 enum class JamState {
     DISCONNECTED,
     CONNECTING,
     CONNECTED,
+    RECONNECTING,
     IN_SESSION,
+    ENDED,
     ERROR,
 }
 
 // ─── Outgoing Messages (Client → Server) ────────────────────────────────────
 
 object JamMessages {
-    fun createSession(displayName: String) = JSONObject().apply {
+    fun createSession(displayName: String, clientId: String) = JSONObject().apply {
         put("type", "CREATE")
         put("displayName", displayName)
+        put("clientId", clientId)
     }.toString()
 
-    fun joinSession(code: String, displayName: String) = JSONObject().apply {
+    fun joinSession(
+        code: String,
+        displayName: String,
+        clientId: String,
+        resumeToken: String? = null,
+    ) = JSONObject().apply {
         put("type", "JOIN")
         put("code", code)
         put("displayName", displayName)
+        put("clientId", clientId)
+        if (!resumeToken.isNullOrBlank()) {
+            put("resumeToken", resumeToken)
+        }
     }.toString()
 
     fun leaveSession() = JSONObject().apply {

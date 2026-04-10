@@ -44,4 +44,8 @@ class JamViewModel @Inject constructor(
     fun clearError() {
         jamManager.clearError()
     }
+
+    fun returnToSetup() {
+        jamManager.returnToSetup()
+    }
 }

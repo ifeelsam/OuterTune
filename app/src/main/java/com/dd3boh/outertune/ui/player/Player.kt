@@ -48,6 +48,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
@@ -58,6 +59,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.FastRewind
+import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -68,6 +70,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -143,6 +146,8 @@ import com.dd3boh.outertune.ui.component.button.ResizableIconButton
 import com.dd3boh.outertune.ui.component.collapsedAnchor
 import com.dd3boh.outertune.ui.component.dismissedAnchor
 import com.dd3boh.outertune.ui.component.rememberBottomSheetState
+import com.dd3boh.outertune.ui.jam.JamIdentityAvatar
+import com.dd3boh.outertune.ui.jam.rememberJamIdentityState
 import com.dd3boh.outertune.ui.menu.PlayerMenu
 import com.dd3boh.outertune.ui.theme.extractGradientColors
 import com.dd3boh.outertune.ui.utils.SnapLayoutInfoProvider
@@ -235,6 +240,9 @@ fun PortraitPlayer(
     Log.v(TAG, "PLR-3.1b")
 
     val playerConnection = LocalPlayerConnection.current ?: return
+    val isInJamSession by playerConnection.isInJamSession.collectAsState()
+    val jamParticipants by playerConnection.jamParticipants.collectAsState()
+    val (jamIdentity, _) = rememberJamIdentityState()
 
     val dismissedBound = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
 
@@ -372,6 +380,53 @@ fun PortraitPlayer(
             },
             navController = navController
         )
+    }
+}
+
+@Composable
+private fun JamStatusStrip(
+    displayName: String?,
+    participantCount: Int,
+    onBackgroundColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    if (displayName.isNullOrBlank()) return
+
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.2f),
+        shape = RoundedCornerShape(999.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            JamIdentityAvatar(
+                name = displayName,
+                modifier = Modifier.size(20.dp),
+                containerColor = onBackgroundColor.copy(alpha = 0.14f),
+                contentColor = onBackgroundColor
+            )
+            Icon(
+                imageVector = Icons.Rounded.Group,
+                contentDescription = null,
+                tint = onBackgroundColor.copy(alpha = 0.8f),
+                modifier = Modifier
+                    .padding(start = 8.dp, end = 4.dp)
+                    .size(13.dp)
+            )
+            Text(
+                text = if (participantCount > 1) {
+                    "In jam • $participantCount people"
+                } else {
+                    "In jam"
+                },
+                color = onBackgroundColor.copy(alpha = 0.9f),
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
@@ -622,6 +677,9 @@ fun ControlsContent(
     val haptic = LocalHapticFeedback.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
+    val isInJamSession by playerConnection.isInJamSession.collectAsState()
+    val jamParticipants by playerConnection.jamParticipants.collectAsState()
+    val (jamIdentity, _) = rememberJamIdentityState()
 
 
     val isPlaying by playerConnection.isPlaying.collectAsState()
@@ -766,6 +824,16 @@ fun ControlsContent(
                                 style = MaterialTheme.typography.titleMedium,
                                 color = onBackgroundColor,
                                 maxLines = 1,
+                            )
+                        }
+
+                        if (isInJamSession) {
+                            Spacer(Modifier.height(8.dp))
+                            JamStatusStrip(
+                                displayName = jamIdentity.resolveDisplayName(),
+                                participantCount = jamParticipants.size,
+                                onBackgroundColor = onBackgroundColor,
+                                modifier = Modifier.wrapContentWidth()
                             )
                         }
                     }

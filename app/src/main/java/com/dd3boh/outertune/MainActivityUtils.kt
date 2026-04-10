@@ -31,6 +31,7 @@ import com.dd3boh.outertune.models.toMediaMetadata
 import com.dd3boh.outertune.playback.DownloadUtil
 import com.dd3boh.outertune.playback.PlayerConnection
 import com.dd3boh.outertune.playback.queues.ListQueue
+import com.dd3boh.outertune.ui.jam.parseJamInviteCode
 import com.dd3boh.outertune.ui.utils.MEDIA_PERMISSION_LEVEL
 import com.dd3boh.outertune.ui.utils.clearDtCache
 import com.dd3boh.outertune.utils.dataStore
@@ -61,6 +62,21 @@ fun youtubeNavigator(
     snackbarHostState: SnackbarHostState,
     uri: Uri
 ): Boolean {
+    parseJamInviteCode(uri)?.let { code ->
+        navController.navigate("jam/join/$code")
+        return true
+    }
+    if (uri.host in setOf("outertune.app", "www.outertune.app")) {
+        coroutineScope.launch {
+            snackbarHostState.showSnackbar(
+                message = "That jam invite link is invalid.",
+                withDismissAction = true,
+                duration = SnackbarDuration.Long
+            )
+        }
+        return true
+    }
+
     when (val path = uri.pathSegments.firstOrNull()) {
         "playlist" -> uri.getQueryParameter("list")?.let { playlistId ->
             if (playlistId.startsWith("OLAK5uy_")) {

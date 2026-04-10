@@ -242,6 +242,8 @@ dependencies {
     implementation(libs.room.ktx)
 
     implementation(libs.apache.lang3)
+    implementation(libs.zxing.core)
+    implementation(libs.zxing.android.embedded)
 
     implementation(libs.hilt)
     ksp(libs.hilt.compiler)

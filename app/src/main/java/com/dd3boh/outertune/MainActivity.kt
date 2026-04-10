@@ -410,6 +410,7 @@ class MainActivity : ComponentActivity() {
                                     (playerBottomSheetState.isCollapsed || playerBottomSheetState.isDismissed)
                         }
                     )
+                    var launchIntentHandled by remember { mutableStateOf(false) }
 
 
                     DisposableEffect(Unit) {
@@ -429,6 +430,22 @@ class MainActivity : ComponentActivity() {
 
                         addOnNewIntentListener(listener)
                         onDispose { removeOnNewIntentListener(listener) }
+                    }
+
+                    LaunchedEffect(playerConnection, launchIntentHandled) {
+                        if (launchIntentHandled) return@LaunchedEffect
+                        val launchUri =
+                            intent?.data ?: intent?.extras?.getString(Intent.EXTRA_TEXT)?.toUri()
+                            ?: return@LaunchedEffect
+                        youtubeNavigator(
+                            this@MainActivity,
+                            navController,
+                            coroutineScope,
+                            playerConnection,
+                            snackbarHostState,
+                            launchUri
+                        )
+                        launchIntentHandled = true
                     }
 
                     CompositionLocalProvider(
@@ -691,7 +708,10 @@ class MainActivity : ComponentActivity() {
                                         YouTubeBrowseScreen(navController, scrollBehavior)
                                     }
                                     composable("jam") {
-                                        JamScreen(onNavigateUp = { navController.navigateUp() })
+                                        JamScreen(
+                                            onNavigateUp = { navController.navigateUp() },
+                                            onOpenJoinCode = { code -> navController.navigate("jam/join/$code") }
+                                        )
                                     }
                                     composable(
                                         route = "jam/join/{code}",

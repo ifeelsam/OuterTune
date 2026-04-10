@@ -108,3 +108,4 @@ lint/tmp/
 /ffMetadataEx
 keystore.properties
 outertune-release.jks
+.gradle-Local

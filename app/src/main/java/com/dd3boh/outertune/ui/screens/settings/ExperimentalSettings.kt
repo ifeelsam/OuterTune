@@ -114,7 +114,7 @@ fun ExperimentalSettings(
     val (devSettings, onDevSettingsChange) = rememberPreference(DevSettingsKey, defaultValue = false)
     val (oobeStatus, onOobeStatusChange) = rememberPreference(OobeStatusKey, defaultValue = 0)
 
-    val (jamServerUrl, onJamServerUrlChange) = rememberPreference(JamServerUrlKey, defaultValue = "ws://10.0.2.2:3000")
+    val (jamServerUrl, onJamServerUrlChange) = rememberPreference(JamServerUrlKey, defaultValue = "ws://files.cipherscore.xyz")
     val (jamDisplayName, onJamDisplayNameChange) = rememberPreference(JamDisplayNameKey, defaultValue = "Guest")
 
     var nukeEnabled by remember {
