@@ -4,8 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -21,7 +23,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.dd3boh.outertune.constants.JamDisplayNameKey
 import com.dd3boh.outertune.playback.JamState
+import com.dd3boh.outertune.utils.rememberPreference
 import com.dd3boh.outertune.viewmodels.JamViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -89,12 +93,17 @@ fun JamScreen(
 
 @Composable
 private fun JamSetupView(viewModel: JamViewModel) {
-    val displayName by viewModel.displayNameInput.collectAsState()
+    val (displayName, onDisplayNameChange) = rememberPreference(
+        key = JamDisplayNameKey,
+        defaultValue = "Guest"
+    )
     val joinCode by viewModel.joinCodeInput.collectAsState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .imePadding()
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -121,8 +130,8 @@ private fun JamSetupView(viewModel: JamViewModel) {
 
         OutlinedTextField(
             value = displayName,
-            onValueChange = viewModel::updateDisplayName,
-            label = { Text("Your Display Name") },
+            onValueChange = onDisplayNameChange,
+            label = { Text("Joining As") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
@@ -130,7 +139,7 @@ private fun JamSetupView(viewModel: JamViewModel) {
         Spacer(Modifier.height(32.dp))
         
         Button(
-            onClick = viewModel::startSession,
+            onClick = { viewModel.startSession(displayName) },
             modifier = Modifier.fillMaxWidth().height(56.dp),
             enabled = displayName.isNotBlank()
         ) {
@@ -159,7 +168,7 @@ private fun JamSetupView(viewModel: JamViewModel) {
         Spacer(Modifier.height(16.dp))
 
         OutlinedButton(
-            onClick = viewModel::joinSession,
+            onClick = { viewModel.joinSession(displayName) },
             modifier = Modifier.fillMaxWidth().height(56.dp),
             enabled = displayName.isNotBlank() && joinCode.length == 6
         ) {

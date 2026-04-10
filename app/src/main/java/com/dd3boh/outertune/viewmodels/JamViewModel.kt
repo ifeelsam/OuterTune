@@ -15,26 +15,19 @@ class JamViewModel @Inject constructor(
     private val _joinCodeInput = MutableStateFlow("")
     val joinCodeInput = _joinCodeInput.asStateFlow()
 
-    private val _displayNameInput = MutableStateFlow("")
-    val displayNameInput = _displayNameInput.asStateFlow()
-
     fun updateJoinCode(code: String) {
         _joinCodeInput.value = code.uppercase()
     }
 
-    fun updateDisplayName(name: String) {
-        _displayNameInput.value = name
-    }
-
-    fun startSession() {
-        if (_displayNameInput.value.isNotBlank()) {
-            jamManager.startSession(_displayNameInput.value)
+    fun startSession(displayName: String) {
+        if (displayName.isNotBlank()) {
+            jamManager.startSession(displayName)
         }
     }
 
-    fun joinSession() {
-        if (_joinCodeInput.value.isNotBlank() && _displayNameInput.value.isNotBlank()) {
-            jamManager.joinSession(_joinCodeInput.value, _displayNameInput.value)
+    fun joinSession(displayName: String) {
+        if (_joinCodeInput.value.isNotBlank() && displayName.isNotBlank()) {
+            jamManager.joinSession(_joinCodeInput.value, displayName)
         }
     }
 

@@ -450,7 +450,10 @@ class MusicService : MediaLibraryService(),
                 }
             }
         } finally {
-            isSyncingToJam = false
+            scope.launch {
+                kotlinx.coroutines.delay(500)
+                isSyncingToJam = false
+            }
         }
     }
 

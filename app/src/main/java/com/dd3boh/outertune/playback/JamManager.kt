@@ -3,6 +3,8 @@ package com.dd3boh.outertune.playback
 import android.content.Context
 import android.util.Log
 import com.dd3boh.outertune.constants.JamServerUrlKey
+import com.dd3boh.outertune.models.MediaMetadata
+import com.dd3boh.outertune.playback.queues.Queue
 import com.dd3boh.outertune.utils.dataStore
 import com.dd3boh.outertune.utils.get
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -19,10 +21,21 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import org.json.JSONException
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+
+// Holds an intercepted play request when a guest tries to play something during a Jam session
+data class InterceptedPlayAction(
+    val queue: Queue,
+    val items: List<MediaMetadata>, // pre-fetched first page of songs for queue display
+    val shouldResume: Boolean = false,
+    val replace: Boolean = true,
+    val isRadio: Boolean = false,
+    val title: String? = null
+)
 
 /**
  * Manages WebSocket connection and state for Jam (collaborative listening) sessions.
@@ -80,6 +93,9 @@ class JamManager @Inject constructor(
     private val _guestControlEnabled = MutableStateFlow(false)
     val guestControlEnabled: StateFlow<Boolean> = _guestControlEnabled.asStateFlow()
 
+    private val _pendingInterceptedAction = MutableStateFlow<InterceptedPlayAction?>(null)
+    val pendingInterceptedAction: StateFlow<InterceptedPlayAction?> = _pendingInterceptedAction.asStateFlow()
+
     private var displayName: String = "User"
 
     val isInSession: Boolean
@@ -119,6 +135,14 @@ class JamManager @Inject constructor(
         )
         // Optimistically update local state immediately
         _guestControlEnabled.value = newValue
+    }
+
+    fun requestInterceptPlay(action: InterceptedPlayAction) {
+        _pendingInterceptedAction.value = action
+    }
+
+    fun clearPendingIntercept() {
+        _pendingInterceptedAction.value = null
     }
 
     fun sendPlaybackUpdate(
@@ -263,6 +287,7 @@ class JamManager @Inject constructor(
         _remotePlaybackState.value = null
         _error.value = null
         _guestControlEnabled.value = false
+        _pendingInterceptedAction.value = null
     }
 
     private fun sendMessage(message: String) {

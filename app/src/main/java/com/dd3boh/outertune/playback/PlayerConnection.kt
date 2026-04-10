@@ -46,6 +46,7 @@ import org.akanework.gramophone.logic.utils.SemanticLyrics
 class PlayerConnection(
     binder: MediaControllerViewModel,
     val database: MusicDatabase,
+    private val jamManager: JamManager,
 ) : Player.Listener {
     val TAG = PlayerConnection::class.simpleName.toString()
 
@@ -115,8 +116,21 @@ class PlayerConnection(
         shouldResume: Boolean = false,
         replace: Boolean = true,
         isRadio: Boolean = false,
-        title: String? = null
+        title: String? = null,
+        force: Boolean = false
     ) {
+        if (!force && jamManager.isInSession && !jamManager.isHost.value) {
+            // Fetch the first page of items so the bottom sheet can show them immediately
+            scope.launch {
+                val status = try { queue.getInitialStatus() } catch (e: Exception) { null }
+                val items = status?.items ?: emptyList()
+                jamManager.requestInterceptPlay(
+                    InterceptedPlayAction(queue, items, shouldResume, replace, isRadio, title)
+                )
+            }
+            return
+        }
+
         service.playQueue(
             queue = queue,
             shouldResume = shouldResume,
@@ -125,6 +139,7 @@ class PlayerConnection(
             isRadio = isRadio
         )
     }
+
 
     /**
      * Add item to queue, right after current playing item

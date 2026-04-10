@@ -2,12 +2,18 @@
   "name": "outertune-jam-server",
   "version": "1.0.0",
   "description": "WebSocket server for OuterTune Jam sessions",
+  "main": "server.js",
   "scripts": {
-    "start": "bun run server.ts",
-    "dev": "bun --watch run server.ts"
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "build": "tsc"
   },
-  "dependencies": {},
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.0.0"
   }
 }

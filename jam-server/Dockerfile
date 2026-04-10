@@ -1,9 +1,9 @@
-FROM oven/bun:1
+FROM node:22-alpine
 
 WORKDIR /app
 COPY package.json ./
-RUN bun install
-COPY server.ts ./
+RUN npm install --omit=dev
+COPY server.js ./
 
 EXPOSE 8080
-CMD ["bun", "run", "server.ts"]
+CMD ["node", "server.js"]

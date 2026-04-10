@@ -205,6 +205,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var syncUtils: SyncUtils
 
+    @Inject
+    lateinit var jamManager: com.dd3boh.outertune.playback.JamManager
+
     lateinit var activityLauncher: ActivityLauncherHelper
     lateinit var connectivityObserver: NetworkConnectivityObserver
 
@@ -246,7 +249,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         lifecycle.addObserver(controllerViewModel)
         controllerViewModel.addControllerCallback(lifecycle) { controller, _ ->
-            playerConnection = PlayerConnection(controllerViewModel, database)
+            playerConnection = PlayerConnection(controllerViewModel, database, jamManager)
         }
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
@@ -1021,6 +1024,13 @@ class MainActivity : ComponentActivity() {
                                 if (oobeStatus < OOBE_VERSION) {
                                     navController.navigate("setup_wizard")
                                 }
+                            }
+
+                            if (playerConnection != null) {
+                                com.dd3boh.outertune.ui.component.JamGuestActionSheet(
+                                    jamManager = jamManager,
+                                    playerConnection = playerConnection!!
+                                )
                             }
 
                             if (BuildConfig.DEBUG) {
